@@ -344,7 +344,56 @@ class DAMXBuilder:
             sys.exit(1)
         
         shutil.copytree(self.drivers_dir, drivers_target)
+        self.patch_anv15_52_driver(drivers_target)
         print("✓ Drivers copied and renamed to Linuwu-Sense")
+
+    def patch_anv15_52_driver(self, drivers_target):
+        """Port the upstream ANV15-52 EC profile fix into the packaged driver copy."""
+        driver_source = drivers_target / "src" / "linuwu_sense.c"
+        if not driver_source.exists():
+            print(f"Error: Driver source not found at {driver_source}")
+            sys.exit(1)
+
+        source = driver_source.read_text()
+        if "ec_mmio_profile" in source and "Nitro ANV15-52" in source:
+            print("✓ Driver already contains ANV15-52 EC profile support")
+            return
+
+        patch_file = self.setup_script.parent / "patches" / "linuwu-sense-anv15-52-ec-profile.patch"
+        if not patch_file.exists():
+            print(f"Error: ANV15-52 driver patch not found at {patch_file}")
+            sys.exit(1)
+
+        try:
+            result = subprocess.run(
+                ["patch", "--batch", "--forward", "-p1", "-i", str(patch_file)],
+                cwd=drivers_target,
+                capture_output=True,
+                text=True,
+                check=True,
+            )
+        except (OSError, subprocess.CalledProcessError) as e:
+            print("Error: Could not apply the ANV15-52 driver patch.")
+            if isinstance(e, subprocess.CalledProcessError):
+                print(e.stdout)
+                print(e.stderr)
+            else:
+                print(e)
+            sys.exit(1)
+
+        patched_source = driver_source.read_text()
+        required_markers = (
+            "ec_mmio_profile",
+            "Nitro ANV15-52",
+            "ANV15_EC_PROFILE_MODE_OFFSET",
+            "memcpy(input, buf, len)",
+        )
+        missing = [marker for marker in required_markers if marker not in patched_source]
+        if missing:
+            print(f"Error: Patched driver is missing required support markers: {', '.join(missing)}")
+            sys.exit(1)
+
+        print("✓ Applied ANV15-52 EC shared-memory profile support to packaged driver")
     
     def update_setup_script(self, package_dir, versions):
         """Copy and update the setup script with version information"""

@@ -52,7 +52,9 @@ public partial class MainWindow : Window, INotifyPropertyChanged
     private Slider _cpuFanSlider;
     private int _cpuFanSpeed = 50;
     private TextBlock _cpuFanTextBlock;
-    private Grid _daemonErrorGrid;
+    private TabControl _mainTabControl;
+    private Button _retryDaemonButton;
+    private TextBlock _daemonConnectionStatus;
     private TextBlock _daemonVersionText;
     private TextBlock _driverVersionText;
     private Slider _gpuFanSlider;
@@ -183,13 +185,17 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         _laptopTypeText = nameScope.Find<TextBlock>("LaptopTypeText");
         _supportedFeaturesTextBlock = nameScope.Find<TextBlock>("SupportedFeaturesTextBlock");
         _daemonVersionText = nameScope.Find<TextBlock>("DaemonVersionText");
+        _daemonConnectionStatus = nameScope.Find<TextBlock>("DaemonConnectionStatus");
+        _mainTabControl = nameScope.Find<TabControl>("MainTabControl");
+        _retryDaemonButton = nameScope.Find<Button>("RetryDaemonButton");
         _driverVersionText = nameScope.Find<TextBlock>("DriverVersionText");
         _guiVersionTextBlock = nameScope.Find<TextBlock>("ProjectVersionText");
-        _daemonErrorGrid = nameScope.Find<Grid>("DaemonErrorGrid");
 
         // Set initial GUI version
         if (_guiVersionTextBlock != null)
             _guiVersionTextBlock.Text = $"v{ProjectVersion}";
+
+        SetDaemonConnectionState(false);
     }
 
     private void AttachEventHandlers()
@@ -343,24 +349,33 @@ public partial class MainWindow : Window, INotifyPropertyChanged
         try
         {
             _isConnected = await _client.ConnectAsync();
+            SetDaemonConnectionState(_isConnected);
             if (_isConnected)
             {
-                _daemonErrorGrid.IsVisible = false;
                 await LoadSettingsAsync();
-            }
-            else
-            {
-                await ShowMessageBox(
-                    "Error Connecting to Daemon",
-                    "Failed to connect to DAMX daemon. The Daemon may be initializing please wait.");
-                _daemonErrorGrid.IsVisible = true;
             }
         }
         catch (Exception ex)
         {
-            await ShowMessageBox("Error while initializing", $"Error initializing: {ex.Message}");
-            _daemonErrorGrid.IsVisible = true;
+            _isConnected = false;
+            SetDaemonConnectionState(false);
+            Console.WriteLine($"Error while initializing DAMX daemon connection: {ex.Message}");
         }
+    }
+
+    private void SetDaemonConnectionState(bool connected)
+    {
+        if (_mainTabControl != null)
+        {
+            foreach (var item in _mainTabControl.Items)
+                if (item is TabItem tab)
+                    tab.IsEnabled = connected || tab.Header?.ToString() == "Dashboard";
+        }
+
+        if (_daemonConnectionStatus != null)
+            _daemonConnectionStatus.IsVisible = !connected;
+        if (_retryDaemonButton != null)
+            _retryDaemonButton.IsVisible = !connected;
     }
 
     private async Task LoadSettingsAsync()

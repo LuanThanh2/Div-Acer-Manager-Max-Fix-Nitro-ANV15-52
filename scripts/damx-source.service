@@ -1,0 +1,16 @@
+[Unit]
+Description=DAMX daemon from the source checkout
+After=local-fs.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/home/luanthanh/Program_File/Div-Acer-Manager-Max
+ExecStart=/usr/bin/python3 -u /home/luanthanh/Program_File/Div-Acer-Manager-Max/DAMM-Daemon/DAMX-Daemon.py
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

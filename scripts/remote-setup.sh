@@ -426,6 +426,15 @@ clone_and_install_linuwu_sense() {
 
   cd Linuwu-Sense || return 1
 
+  if ! grep -q "ec_mmio_profile" src/linuwu_sense.c ||
+     ! grep -q "Nitro ANV15-52" src/linuwu_sense.c ||
+     ! grep -q "ANV15_EC_PROFILE_MODE_OFFSET" src/linuwu_sense.c; then
+    echo -e "${RED}The cloned Linuwu-Sense source lacks the ANV15-52 EC profile fix.${NC}"
+    echo -e "${YELLOW}Refusing to install a driver that cannot expose ANV15-52 controls.${NC}"
+    cd .. || return 1
+    return 1
+  fi
+
   # Install build dependencies if needed
   if ! command -v make &> /dev/null; then
     echo -e "${YELLOW}Installing build tools...${NC}"

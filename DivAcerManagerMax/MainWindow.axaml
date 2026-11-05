@@ -28,6 +28,12 @@
 
                 <StackPanel HorizontalAlignment="Right" Margin="0" Orientation="Horizontal">
 
+                    <TextBlock x:Name="DaemonConnectionStatus" Text="Daemon offline · telemetry only"
+                               Foreground="#FFB86C" FontSize="13" VerticalAlignment="Center"
+                               Margin="0,0,12,0" IsVisible="False" />
+                    <Button x:Name="RetryDaemonButton" Content="Retry daemon" Margin="0,0,16,0"
+                            VerticalAlignment="Center" Click="RetryConnectionButton_OnClick" IsVisible="False" />
+
                     <TextBlock Text="Div Acer Manager MAX" FontSize="26" FontWeight="Bold"
                                LetterSpacing="4" VerticalAlignment="Bottom"
                                HorizontalAlignment="Right" Margin="0 0 20 0"
@@ -47,7 +53,7 @@
 
 
             <!-- Main Content -->
-            <TabControl Grid.Row="1" Margin="10,0,10,10" CornerRadius="20" Background="#18181b" BorderBrush="#18181b"
+            <TabControl x:Name="MainTabControl" Grid.Row="1" Margin="10,0,10,10" CornerRadius="20" Background="#18181b" BorderBrush="#18181b"
                         BorderThickness="5" TabStripPlacement="Left">
 
                 <TabItem Header="Dashboard">
@@ -608,54 +614,5 @@
             </TabControl>
         </Grid>
 
-        <!-- Overlay Grid (on separate layer) -->
-        <Grid x:Name="DaemonErrorGrid" Panel.ZIndex="100" Background="Transparent" IsHitTestVisible="True"
-              IsVisible="True">
-            <Border
-                BorderBrush="#333236"
-                BorderThickness="3"
-                CornerRadius="20"
-                Padding="30"
-                Width="400"
-                Height="280"
-                HorizontalAlignment="Center"
-                VerticalAlignment="Center">
-                <Border.Background>
-                    <LinearGradientBrush StartPoint="0%,0%" EndPoint="0%, 100%">
-                        <GradientStop Offset="0" Color="#18181b" />
-                        <GradientStop Offset="1" Color="#242429" />
-                    </LinearGradientBrush>
-                </Border.Background>
-
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="20">
-                    <!-- Material Icon -->
-                    <material:MaterialIcon Kind="Connection" Foreground="#FF5A5F" Width="48" Height="48"
-                                           HorizontalAlignment="Center" />
-                    <StackPanel Spacing="0">
-                        <!-- Message -->
-                        <TextBlock Text="Daemon not connected"
-                                   Foreground="White"
-                                   FontSize="18"
-                                   HorizontalAlignment="Center"
-                                   Classes="SectionHeader"
-                                   Margin="0,12,0,0" />
-
-                        <TextBlock
-                            Text="Daemon may be initializing. Please wait a minute. If issues persists, check logs."
-                            Foreground="White"
-                            FontSize="13"
-                            TextWrapping="Wrap"
-                            HorizontalAlignment="Center" />
-                    </StackPanel>
-
-                    <!-- Retry Button -->
-                    <Button Content="Retry"
-                            Width="100"
-                            HorizontalAlignment="Center"
-                            HorizontalContentAlignment="Center"
-                            Click="RetryConnectionButton_OnClick" />
-                </StackPanel>
-            </Border>
-        </Grid>
     </Grid>
 </Window>

@@ -85,9 +85,10 @@
                         <TextBlock DockPanel.Dock="Left" Text="Temperature:" Opacity="0.7" Width="90"
                                    VerticalAlignment="Center" />
                         <StackPanel DockPanel.Dock="Right">
-                            <TextBlock x:Name="GpuTemperature" Text="{Binding GpuTemp, StringFormat='{}{0}°C'}"
+                            <TextBlock x:Name="GpuTemperature" Text="{Binding GpuTempDisplay}"
                                        FontWeight="SemiBold" Width="50" VerticalAlignment="Center" />
-                            <ProgressBar x:Name="GpuTemperatureBar" Value="{Binding GpuTemp}" Maximum="110"
+                            <ProgressBar x:Name="GpuTemperatureBar" Value="{Binding GpuTempBarValue}"
+                                         IsVisible="{Binding GpuTempAvailable}" Maximum="110"
                                          MinWidth="10" MaxWidth="Infinity" Margin="0" VerticalAlignment="Center" />
                         </StackPanel>
                     </DockPanel>
@@ -96,9 +97,10 @@
                         <TextBlock DockPanel.Dock="Left" Text="Usage:" Opacity="0.7" Width="90"
                                    VerticalAlignment="Center" />
                         <StackPanel DockPanel.Dock="Right">
-                            <TextBlock Text="{Binding GpuUsage, StringFormat='{}{0}%'}" FontWeight="SemiBold"
+                            <TextBlock Text="{Binding GpuUsageDisplay}" FontWeight="SemiBold"
                                        Width="50" VerticalAlignment="Center" />
-                            <ProgressBar Value="{Binding GpuUsage}" Maximum="100" MinWidth="10" MaxWidth="Infinity"
+                            <ProgressBar Value="{Binding GpuUsageBarValue}" IsVisible="{Binding GpuUsageAvailable}"
+                                         Maximum="100" MinWidth="10" MaxWidth="Infinity"
                                          Margin="0" VerticalAlignment="Center" />
                         </StackPanel>
                     </DockPanel>

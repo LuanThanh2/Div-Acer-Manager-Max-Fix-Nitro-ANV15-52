@@ -58,10 +58,10 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
     private Animation? _gpuFanAnimation;
     private int _gpuFanSpeedRpm;
     private string _gpuName;
-    private double _gpuTemp;
+    private double? _gpuTemp;
     private ObservableCollection<double> _gpuTempHistory;
     private GpuType _gpuType = GpuType.Unknown;
-    private double _gpuUsage;
+    private double? _gpuUsage;
     private bool _hasBattery;
     private string _kernelVersion;
     private int _lastCpuRpm;
@@ -149,11 +149,27 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         set => SetProperty(ref _cpuTemp, value);
     }
 
-    public double GpuTemp
+    public double? GpuTemp
     {
         get => _gpuTemp;
-        set => SetProperty(ref _gpuTemp, value);
+        set
+        {
+            if (SetProperty(ref _gpuTemp, value))
+            {
+                OnPropertyChanged(nameof(GpuTempDisplay));
+                OnPropertyChanged(nameof(GpuTempAvailable));
+                OnPropertyChanged(nameof(GpuTempBarValue));
+            }
+        }
     }
+
+    public string GpuTempDisplay => GpuTemp is double temperature
+        ? $"{temperature:F1}°C"
+        : "N/A";
+
+    public bool GpuTempAvailable => GpuTemp.HasValue;
+
+    public double GpuTempBarValue => GpuTemp ?? 0;
 
     public double CpuUsage
     {
@@ -167,11 +183,25 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         set => SetProperty(ref _ramUsage, value);
     }
 
-    public double GpuUsage
+    public double? GpuUsage
     {
         get => _gpuUsage;
-        set => SetProperty(ref _gpuUsage, value);
+        set
+        {
+            if (!SetProperty(ref _gpuUsage, value)) return;
+            OnPropertyChanged(nameof(GpuUsageDisplay));
+            OnPropertyChanged(nameof(GpuUsageAvailable));
+            OnPropertyChanged(nameof(GpuUsageBarValue));
+        }
     }
+
+    public string GpuUsageDisplay => GpuUsage is double usage
+        ? $"{usage:0.#}%"
+        : "N/A";
+
+    public bool GpuUsageAvailable => GpuUsage.HasValue;
+
+    public double GpuUsageBarValue => GpuUsage ?? 0;
 
     public string BatteryStatus
     {
@@ -261,9 +291,12 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
                     _cpuTempHistory.RemoveAt(0);
                 _cpuTempHistory.Add(metricsData.CpuTemp);
 
-                if (_gpuTempHistory.Count >= MAX_HISTORY_POINTS)
-                    _gpuTempHistory.RemoveAt(0);
-                _gpuTempHistory.Add(metricsData.GpuTemp);
+                if (metricsData.GpuTemp is double gpuTemperature)
+                {
+                    if (_gpuTempHistory.Count >= MAX_HISTORY_POINTS)
+                        _gpuTempHistory.RemoveAt(0);
+                    _gpuTempHistory.Add(gpuTemperature);
+                }
             });
         }
         catch (Exception ex)
@@ -763,6 +796,9 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         if (!int.TryParse(temperatureStr, out var tempValue))
             return false;
 
+        if (tempValue <= 0)
+            return false;
+
         temperatureC = tempValue / 1000.0;
         return true;
     }
@@ -852,7 +888,7 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         }
     }
 
-    private (double temperature, double usage) GetGpuMetrics()
+    private (double? temperature, double? usage) GetGpuMetrics()
     {
         try
         {
@@ -865,57 +901,67 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
                 case GpuType.Intel:
                     return GetIntelGpuMetrics();
                 default:
-                    return (0, 0);
+                    return (null, null);
             }
         }
         catch
         {
-            return (0, 0);
+            return (null, null);
         }
     }
 
-    private (double temperature, double usage) GetNvidiaGpuMetrics()
+    private static bool TryParseGpuTemperature(string output, out double temperature)
+    {
+        temperature = 0;
+        return double.TryParse(output.Trim(), NumberStyles.Float, CultureInfo.InvariantCulture,
+                   out temperature) &&
+               double.IsFinite(temperature) && temperature > 0;
+    }
+
+    private static bool TryParseGpuUsage(string output, out double usage)
+    {
+        var value = output.Trim().TrimEnd('%').Trim();
+        return double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out usage) &&
+               double.IsFinite(usage) && usage is >= 0 and <= 100;
+    }
+
+    private (double? temperature, double? usage) GetNvidiaGpuMetrics()
     {
         try
         {
-            double temp = 0;
-            double usage = 0;
+            double? temp = null;
+            double? usage = null;
 
             // Get GPU temperature
             var tempOutput = RunCommand("nvidia-smi", "--query-gpu=temperature.gpu --format=csv,noheader");
-            if (double.TryParse(tempOutput.Trim(), out temp))
-            {
-                // temperature is already in celsius
-            }
+            if (TryParseGpuTemperature(tempOutput, out var parsedTemperature))
+                temp = parsedTemperature;
 
             // Get GPU utilization
-            var utilOutput = RunCommand("nvidia-smi", "--query-gpu=utilization.gpu --format=csv,noheader");
-            var utilMatch = Regex.Match(utilOutput, @"(\d+)");
-            if (utilMatch.Success && double.TryParse(utilMatch.Groups[1].Value, out usage))
-            {
-                // usage is already in percentage
-            }
+            var utilOutput = RunCommand("nvidia-smi", "--query-gpu=utilization.gpu --format=csv,noheader,nounits --id=0");
+            if (TryParseGpuUsage(utilOutput, out var parsedUsage))
+                usage = parsedUsage;
 
             return (temp, usage);
         }
         catch
         {
-            return (0, 0);
+            return (null, null);
         }
     }
 
-    private (double temperature, double usage) GetAmdGpuMetrics()
+    private (double? temperature, double? usage) GetAmdGpuMetrics()
     {
         try
         {
-            double temp = 0;
-            double usage = 0;
+            double? temp = null;
+            double? usage = null;
 
             // Use cached GPU temp path if available
             if (_systemInfoPaths.ContainsKey("gpu_temp") && File.Exists(_systemInfoPaths["gpu_temp"]))
             {
                 var tempStr = File.ReadAllText(_systemInfoPaths["gpu_temp"]);
-                if (int.TryParse(tempStr.Trim(), out var tempValue))
+                if (int.TryParse(tempStr.Trim(), out var tempValue) && tempValue > 0)
                     temp = tempValue / 1000.0; // Convert from milliCelsius to Celsius
             }
 
@@ -927,18 +973,20 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
             }
 
             // If we couldn't get values from cached paths, try radeontop
-            if (temp == 0 || usage == 0)
+            if (!temp.HasValue || !usage.HasValue || usage == 0)
             {
                 var radeontopOutput = RunCommand("radeontop", "-d- -l1");
                 var tempMatch = Regex.Match(radeontopOutput, @"Temperature:\s+(\d+)");
                 var usageMatch = Regex.Match(radeontopOutput, @"GPU\s+(\d+)%");
 
-                if (tempMatch.Success && temp == 0)
-                    if (double.TryParse(tempMatch.Groups[1].Value, out var tempValue))
+                if (tempMatch.Success && !temp.HasValue)
+                    if (double.TryParse(tempMatch.Groups[1].Value, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out var tempValue) && tempValue > 0)
                         temp = tempValue;
 
-                if (usageMatch.Success && usage == 0)
-                    if (double.TryParse(usageMatch.Groups[1].Value, out var usageValue))
+                if (usageMatch.Success && (!usage.HasValue || usage == 0))
+                    if (double.TryParse(usageMatch.Groups[1].Value, NumberStyles.Float,
+                            CultureInfo.InvariantCulture, out var usageValue))
                         usage = usageValue;
             }
 
@@ -946,22 +994,22 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         }
         catch
         {
-            return (0, 0);
+            return (null, null);
         }
     }
 
-    private (double temperature, double usage) GetIntelGpuMetrics()
+    private (double? temperature, double? usage) GetIntelGpuMetrics()
     {
         try
         {
-            double temp = 0;
-            double usage = 0;
+            double? temp = null;
+            double? usage = null;
 
             // Use cached GPU temp path if available
             if (_systemInfoPaths.ContainsKey("gpu_temp") && File.Exists(_systemInfoPaths["gpu_temp"]))
             {
                 var tempStr = File.ReadAllText(_systemInfoPaths["gpu_temp"]);
-                if (int.TryParse(tempStr.Trim(), out var tempValue))
+                if (int.TryParse(tempStr.Trim(), out var tempValue) && tempValue > 0)
                     temp = tempValue / 1000.0; // Convert from milliCelsius to Celsius
             }
 
@@ -976,7 +1024,7 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         }
         catch
         {
-            return (0, 0);
+            return (null, null);
         }
     }
 
@@ -1558,8 +1606,8 @@ public partial class Dashboard : UserControl, INotifyPropertyChanged
         public double CpuUsage { get; set; }
         public double CpuTemp { get; set; }
         public double RamUsage { get; set; }
-        public double GpuTemp { get; set; }
-        public double GpuUsage { get; set; }
+        public double? GpuTemp { get; set; }
+        public double? GpuUsage { get; set; }
         public int BatteryPercentage { get; set; }
         public string BatteryStatus { get; set; } = "Unknown";
         public string BatteryTimeRemaining { get; set; } = "0";

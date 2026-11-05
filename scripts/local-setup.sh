@@ -434,6 +434,29 @@ install_build_deps() {
   fi
 }
 
+apply_anv15_52_driver_patch() {
+  local source_file="src/linuwu_sense.c"
+  local patch_file
+  local script_dir
+
+  if ! grep -q "ec_mmio_profile" "$source_file" ||
+     ! grep -q "Nitro ANV15-52" "$source_file"; then
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    patch_file="${script_dir}/patches/linuwu-sense-anv15-52-ec-profile.patch"
+    if [ ! -f "$patch_file" ]; then
+      echo -e "${RED}Error: ANV15-52 driver patch is missing: ${patch_file}${NC}"
+      return 1
+    fi
+    if ! patch --batch --forward -p1 -i "$patch_file"; then
+      echo -e "${RED}Error: Could not patch Linuwu-Sense for ANV15-52.${NC}"
+      return 1
+    fi
+    echo -e "${GREEN}ANV15-52 EC profile support applied.${NC}"
+  fi
+
+  return 0
+}
+
 install_drivers() {
   local build_args=()
   local signing_status
@@ -448,6 +471,11 @@ install_drivers() {
   fi
 
   cd Linuwu-Sense || return 1
+
+  apply_anv15_52_driver_patch || {
+    cd .. || return 1
+    return 1
+  }
 
   # Install required build dependencies
   if ! command -v make &> /dev/null; then

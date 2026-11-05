@@ -90,8 +90,8 @@ class LaptopType(Enum):
 class DAMXManager:
     """Manages all the DAMX-Daemon features"""
 
-    MAX_RESTART_ATTEMPTS = 20
-    RESTART_COUNTER_FILE = "/tmp/damx_restart_attempts"
+    LAPTOP_DETECTION_TIMEOUT = 3.0
+    LAPTOP_DETECTION_INTERVAL = 0.2
 
     def __init__(self):
         '''The initial init (i know very nice description)'''
@@ -103,32 +103,12 @@ class DAMXManager:
         else:
             log.info("linuwu_sense module found. Proceeding with initialization.")
         
-        self.laptop_type = self._detect_laptop_type()
-        # self.keyboard_monitor = None
-
-        #added a delay so that driver sets up properly first
-        time.sleep(0.2)
-
-        # If unknown laptop type detected, try restarting drivers (with limit)
+        self.laptop_type = self._wait_for_laptop_type()
         if self.laptop_type == LaptopType.UNKNOWN:
-            current_attempts = self._get_restart_attempts()
-            
-            if current_attempts < self.MAX_RESTART_ATTEMPTS:
-                attempts = self._increment_restart_attempts()
-                log.warning(f"Unknown laptop type detected, attempting driver restart (attempt {attempts}/{self.MAX_RESTART_ATTEMPTS})...")
-                
-                if self._restart_drivers_and_daemon():
-                    # The daemon will restart itself, so we should exit this instance
-                    log.info("Driver restart initiated, daemon will restart automatically")
-                    sys.exit(0)
-                else:
-                    log.error(f"Failed to restart drivers (attempt {attempts}), continuing with limited functionality")
-            else:
-                log.error(f"Maximum restart attempts ({self.MAX_RESTART_ATTEMPTS}) reached, giving up on driver restart")
-                log.info("Continuing with unknown laptop type and limited functionality")
-        else:
-            # Reset counter on successful detection
-            self._reset_restart_attempts()
+            log.warning(
+                "Linuwu-Sense is loaded but has not exposed a Predator or Nitro sysfs group; "
+                "automatic module reload is skipped and hardware controls stay hidden"
+            )
         
         self.base_path = self._get_base_path()
         self.has_four_zone_kb = self._check_four_zone_kb()
@@ -150,34 +130,6 @@ class DAMXManager:
             raise FileNotFoundError(f"Base path does not exist: {self.base_path}")
         
         self.power_monitor = None
-
-    def _get_restart_attempts(self) -> int:
-        """Get current restart attempt count"""
-        try:
-            if os.path.exists(self.RESTART_COUNTER_FILE):
-                with open(self.RESTART_COUNTER_FILE, 'r') as f:
-                    return int(f.read().strip())
-        except (ValueError, IOError):
-            pass
-        return 0
-
-    def _increment_restart_attempts(self) -> int:
-        """Increment and return restart attempt count"""
-        attempts = self._get_restart_attempts() + 1
-        try:
-            with open(self.RESTART_COUNTER_FILE, 'w') as f:
-                f.write(str(attempts))
-        except IOError as e:
-            log.error(f"Failed to write restart counter: {e}")
-        return attempts
-
-    def _reset_restart_attempts(self):
-        """Reset restart attempt counter"""
-        try:
-            if os.path.exists(self.RESTART_COUNTER_FILE):
-                os.unlink(self.RESTART_COUNTER_FILE)
-        except IOError as e:
-            log.error(f"Failed to reset restart counter: {e}")
 
     def _force_model_nitro(self):
         """Restart linuwu-sense driver and DAMX daemon service with nitro_v4 parameter"""
@@ -396,7 +348,6 @@ class DAMXManager:
         
     def _restart_daemon(self):
         """Restart DAMX daemon service alone"""
-        attempts = self._get_restart_attempts()
         log.info(f"Attempting to restart daemon")
         
         try:
@@ -407,14 +358,13 @@ class DAMXManager:
             return True
             
         except Exception as e:
-            log.error(f"Unexpected error during restart (attempt {attempts}): {e}")
+            log.error(f"Unexpected error during daemon restart: {e}")
             return False
             
 
     def _restart_drivers_and_daemon(self):
         """Restart linuwu-sense driver and DAMX daemon service"""
-        attempts = self._get_restart_attempts()
-        log.info(f"Attempting to restart drivers and daemon (attempt {attempts}/{self.MAX_RESTART_ATTEMPTS})...")
+        log.info("Attempting to restart drivers and daemon")
         
         try:
             # Remove the module
@@ -438,9 +388,21 @@ class DAMXManager:
             return True
             
         except Exception as e:
-            log.error(f"Unexpected error during restart (attempt {attempts}): {e}")
+            log.error(f"Unexpected error during driver and daemon restart: {e}")
             return False
             
+    def _wait_for_laptop_type(self) -> LaptopType:
+        """Wait briefly for the driver to publish its real sysfs group."""
+        deadline = time.monotonic() + self.LAPTOP_DETECTION_TIMEOUT
+        while True:
+            laptop_type = self._detect_laptop_type()
+            if laptop_type != LaptopType.UNKNOWN:
+                return laptop_type
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                return LaptopType.UNKNOWN
+            time.sleep(min(self.LAPTOP_DETECTION_INTERVAL, remaining))
+
     def _detect_laptop_type(self) -> LaptopType:
         """Detect whether this is a Predator or Nitro laptop"""
         predator_path = "/sys/module/linuwu_sense/drivers/platform:acer-wmi/acer-wmi/predator_sense"
@@ -479,9 +441,16 @@ class DAMXManager:
         """Detect which features are available on the current laptop"""
         available = set()
 
-        # Always check thermal profile since it's ACPI standard
-        if os.path.exists("/sys/firmware/acpi/platform_profile"):
-            available.add("thermal_profile")
+        # Advertise profiles only when the driver detected this Acer model
+        # and the ACPI endpoint reports a valid current profile. The patched
+        # Linuwu-Sense driver exposes this interface for ANV15-52 via EC.
+        if self.laptop_type != LaptopType.UNKNOWN:
+            profile_path = "/sys/firmware/acpi/platform_profile"
+            choices_path = "/sys/firmware/acpi/platform_profile_choices"
+            current_profile = self._read_file(profile_path)
+            profile_choices = self._read_file(choices_path).split()
+            if current_profile and current_profile in profile_choices:
+                available.add("thermal_profile")
 
         # Only check other features if laptop type is recognized
         if self.laptop_type != LaptopType.UNKNOWN and os.path.exists(self.base_path):

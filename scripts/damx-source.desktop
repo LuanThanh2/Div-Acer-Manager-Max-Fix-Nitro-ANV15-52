@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Div Acer Manager Max (Source)
+Comment=Launch the DAMX GUI from this source checkout
+Exec=/home/luanthanh/Program_File/Div-Acer-Manager-Max/scripts/run-damx-gui.sh
+TryExec=/usr/bin/dotnet
+Icon=/home/luanthanh/Program_File/Div-Acer-Manager-Max/DivAcerManagerMax/icon.png
+Terminal=false
+Categories=Settings;
+StartupNotify=true

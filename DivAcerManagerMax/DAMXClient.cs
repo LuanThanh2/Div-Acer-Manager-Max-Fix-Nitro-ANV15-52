@@ -82,7 +82,7 @@ public class DAMXClient : IDisposable
             if (IsConnected && await ValidateConnection()) return true;
 
             _socket?.Dispose();
-            _socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.IP);
+            _socket = new Socket(AddressFamily.Unix, SocketType.Stream, ProtocolType.Unspecified);
             var endpoint = new UnixDomainSocketEndPoint(SocketPath);
 
             await _socket.ConnectAsync(endpoint);
